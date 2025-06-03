@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h> // Para malloc, free, atoi, sprintf
 #include <string.h> // Para strdup, strcmp
+#include <sqlite3.h>
 
 // Prototipo de la función del analizador léxico (generada por Flex)
 int yylex();
@@ -13,6 +14,8 @@ void yyerror(const char *s);
 // Si usaste %option yylineno en Flex, entonces deberías usar 'extern int yylineno;'.
 extern int current_line;
 
+sqlite3 *   
+char *db_error_message = 0;
 
 // --- Definición de Estructuras de Datos para las Asignaciones ---
 
@@ -204,11 +207,14 @@ Value crear_valor_desde_entero(int ival_from_lexer) {
 Value crear_valor_desde_booleano_texto(char* bool_text_from_lexer) {
     Value v;
     v.type = V_BOOL;
-    // El valor "real" booleano podría almacenarse como int 0/1 en v.val.iVal si se desea,
-    // pero original_text mantiene "true" o "false".
-    // Por simplicidad, vamos a asumir que la representación textual es suficiente por ahora.
-    v.val.sVal = NULL; // No usamos sVal o iVal para booleanos en esta versión simplificada
-    v.original_text = bool_text_from_lexer; // Toma posesión del strdup'd string del lexer
+    v.original_text = bool_text_from_lexer; // Toma posesión
+    // Convertir "true"/"false" a 1/0. strcasecmp es POSIX.
+    // Para portabilidad total, podrías convertir bool_text_from_lexer a minúsculas primero.
+    if (strcasecmp(bool_text_from_lexer, "true") == 0) {
+        v.val.iVal = 1;
+    } else {
+        v.val.iVal = 0; // Asume que cualquier cosa que no sea "true" es false
+    }
     return v;
 }
 
@@ -262,65 +268,188 @@ void liberar_lista_asignaciones(NodeAsignacion* cabeza_lista) {
     }
 }
 
+// En la sección de código C de tu archivo .y
 void procesar_sentencia_insercion(char* nombre_tabla, NodeAsignacion* lista_de_asignaciones) {
-    printf("ACCION_DB: Procesando inserción para la tabla -> '%s'\n", nombre_tabla);
-    NodeAsignacion* actual = lista_de_asignaciones;
-    int i = 1;
-    while (actual != NULL) {
-        printf("  %d. Campo: '%s', Valor: ", i++, actual->data.campo);
-        switch (actual->data.valor_data.type) {
-            case V_STR:
-                printf("'%s' (Tipo: Cadena)\n", actual->data.valor_data.val.sVal);
-                break;
-            case V_INT:
-                printf("%d (Tipo: Entero)\n", actual->data.valor_data.val.iVal);
-                break;
-            case V_BOOL:
-                // Podríamos imprimir 1 o 0 si hubiéramos convertido el booleano a entero.
-                // Imprimiendo el texto original:
-                printf("%s (Tipo: Booleano)\n", actual->data.valor_data.original_text);
-                break;
-        }
-        actual = actual->next;
+    printf("ACCION_DB: Preparando inserción para la tabla -> '%s'\n", nombre_tabla);
+
+    if (!lista_de_asignaciones) {
+        fprintf(stderr, "Error: No hay asignaciones para insertar en la tabla '%s'.\n", nombre_tabla);
+        if (nombre_tabla) free(nombre_tabla);
+        return;
     }
-    printf("ACCION_DB: Fin del procesamiento para la tabla '%s'.\n", nombre_tabla);
+
+    // 1. Contar asignaciones y construir listas de campos y placeholders
+    int num_asignaciones = 0;
+    NodeAsignacion* temp = lista_de_asignaciones;
+    while (temp != NULL) {
+        num_asignaciones++;
+        temp = temp->next;
+    }
+
+    if (num_asignaciones == 0) {
+         fprintf(stderr, "Error: Lista de asignaciones vacía para tabla '%s'.\n", nombre_tabla);
+        if (nombre_tabla) free(nombre_tabla);
+        liberar_lista_asignaciones(lista_de_asignaciones);
+        return;
+    }
+
+    // Buffers para construir la query. Asegúrate de que sean suficientemente grandes
+    // o usa asignación dinámica de memoria.
+    char sql_campos[1024] = ""; // Para "campo1, campo2, ..."
+    char sql_placeholders[256] = ""; // Para "?, ?, ..."
+    
+    temp = lista_de_asignaciones;
+    for (int i = 0; i < num_asignaciones; i++) {
+        strcat(sql_campos, temp->data.campo);
+        strcat(sql_placeholders, "?");
+        if (i < num_asignaciones - 1) {
+            strcat(sql_campos, ", ");
+            strcat(sql_placeholders, ", ");
+        }
+        temp = temp->next;
+    }
+
+    char sql_query[2048];
+    sprintf(sql_query, "INSERT INTO %s (%s) VALUES (%s);", 
+            nombre_tabla, sql_campos, sql_placeholders);
+
+    printf("SQL Query: %s\n", sql_query);
+
+    // 2. Preparar la sentencia SQL
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql_query, -1, &stmt, NULL);
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error al preparar la sentencia SQL (%s): %s\n", sql_query, sqlite3_errmsg(db));
+    } else {
+        // 3. Vincular los valores a los placeholders
+        temp = lista_de_asignaciones;
+        for (int i = 0; i < num_asignaciones; i++) {
+            int placeholder_idx = i + 1; // Los placeholders en SQL son 1-indexados
+            Value v = temp->data.valor_data;
+            switch (v.type) {
+                case V_STR:
+                    rc = sqlite3_bind_text(stmt, placeholder_idx, v.val.sVal, -1, SQLITE_STATIC);
+                    // SQLITE_STATIC asume que el string v.val.sVal existirá hasta después de sqlite3_step.
+                    // Si no, usa SQLITE_TRANSIENT y SQLite hará su propia copia.
+                    break;
+                case V_INT:
+                    rc = sqlite3_bind_int(stmt, placeholder_idx, v.val.iVal);
+                    break;
+                case V_BOOL: // Asumiendo que lo almacenamos como entero 0 o 1
+                    rc = sqlite3_bind_int(stmt, placeholder_idx, v.val.iVal);
+                    break;
+                default:
+                    fprintf(stderr, "Error: Tipo de valor desconocido para el campo '%s'.\n", temp->data.campo);
+                    rc = SQLITE_ERROR; // Marcar como error para no ejecutar
+                    break;
+            }
+            if (rc != SQLITE_OK) {
+                fprintf(stderr, "Error al vincular el valor para el campo '%s' (placeholder %d): %s\n", 
+                        temp->data.campo, placeholder_idx, sqlite3_errmsg(db));
+                break; // Salir del bucle de vinculación
+            }
+            temp = temp->next;
+        }
+
+        // 4. Ejecutar la sentencia (si la vinculación fue exitosa)
+        if (rc == SQLITE_OK) {
+            rc = sqlite3_step(stmt);
+            if (rc == SQLITE_DONE) {
+                printf("Inserción exitosa en la tabla '%s'.\n", nombre_tabla);
+            } else {
+                fprintf(stderr, "Error al ejecutar la inserción en '%s': %s\n", nombre_tabla, sqlite3_errmsg(db));
+            }
+        }
+    }
+
+    // 5. Finalizar la sentencia para liberar recursos
+    sqlite3_finalize(stmt);
 
     // --- Liberación de Memoria ---
-    // Liberar el nombre de la tabla (vino de IDENTIFICADOR, strdup'd en lexer)
     if (nombre_tabla) {
         free(nombre_tabla);
     }
-    // Liberar la lista de asignaciones y todos sus contenidos
     liberar_lista_asignaciones(lista_de_asignaciones);
 }
 
 
 // Función principal que inicia el análisis
 int main(int argc, char *argv[]) {
+    int rc_db; // Código de retorno para operaciones de BD
+
+    // Abrir la base de datos
+    rc_db = sqlite3_open("mi_base_de_datos.db", &db); // Intenta abrir/crear el archivo
+    if (rc_db) {
+        fprintf(stderr, "No se puede abrir la base de datos: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db); // Aunque falle, intenta cerrar
+        return(1);
+    } else {
+        fprintf(stdout, "Base de datos abierta/creada exitosamente.\n");
+    }
+
+// ... dentro de main(), después de sqlite3_open() ...
+    char *sql_create_usuarios = 
+        "CREATE TABLE IF NOT EXISTS Usuarios ("
+        "ID_Usuario TEXT PRIMARY KEY,"
+        "Nombre     TEXT NOT NULL,"
+        "Email      TEXT UNIQUE,"
+        "Activo     INTEGER DEFAULT 0" 
+        ");";
+
+    char *sql_create_productos =
+        "CREATE TABLE IF NOT EXISTS Productos ("
+        "SKU             TEXT PRIMARY KEY,"
+        "NombreProducto  TEXT NOT NULL,"
+        "Stock           INTEGER,"
+        "Precio          INTEGER,"
+        "Disponible      INTEGER DEFAULT 0"
+        ");";
+    
+    // Ejecutar las sentencias CREATE TABLE
+    rc_db = sqlite3_exec(db, sql_create_usuarios, 0, 0, &db_error_message);
+    if (rc_db != SQLITE_OK) {
+        fprintf(stderr, "Error SQL al crear tabla Usuarios: %s\n", db_error_message);
+        sqlite3_free(db_error_message);
+    } else {
+        fprintf(stdout, "Tabla Usuarios verificada/creada.\n");
+    }
+
+    rc_db = sqlite3_exec(db, sql_create_productos, 0, 0, &db_error_message);
+    if (rc_db != SQLITE_OK) {
+        fprintf(stderr, "Error SQL al crear tabla Productos: %s\n", db_error_message);
+        sqlite3_free(db_error_message);
+    } else {
+        fprintf(stdout, "Tabla Productos verificada/creada.\n");
+    }
+// ... resto del main() ...
+
     // Configurar la entrada (desde archivo o stdin)
     if (argc > 1) {
-        yyin = fopen(argv[1], "r"); // yyin es el puntero de archivo de entrada para Flex
+        yyin = fopen(argv[1], "r");
         if (!yyin) {
             perror(argv[1]);
+            sqlite3_close(db);
             return 1;
         }
     } else {
-        yyin = stdin; // Por defecto, Flex lee de stdin
-        printf("Leyendo desde la entrada estándar. Presione Ctrl+D (Unix/Linux) o Ctrl+Z (Windows) para finalizar.\n");
+        yyin = stdin;
+        printf("Leyendo desde la entrada estándar...\n");
     }
 
-    int resultado_parse = yyparse(); // Iniciar el análisis sintáctico
+    int resultado_parse = yyparse();
 
-    // Cerrar el archivo si se abrió uno
     if (yyin != stdin && yyin != NULL) {
         fclose(yyin);
     }
+
+    sqlite3_close(db); // <--- ¡NUEVO! Cerrar la base de datos al final
 
     if (resultado_parse == 0) {
         printf("Análisis completado exitosamente.\n");
         return 0;
     } else {
         printf("Análisis fallido.\n");
-        return 1; // yyparse devuelve 0 en éxito, 1 en error sintáctico, 2 en desbordamiento de memoria
+        return 1;
     }
 }
