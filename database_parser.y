@@ -399,33 +399,18 @@ int main(int argc, char *argv[]) {
     } else {
         fprintf(stdout, "Tabla Productos verificada/creada.\n");
     }
-
-    if (argc > 1) {
+  if (argc > 1) {
         yyin = fopen(argv[1], "r");
         if (!yyin) {
-            perror(argv[1]);
+            fprintf(stderr, "No se pudo abrir el archivo de entrada: %s\n", argv[1]);
             sqlite3_close(db);
             return 1;
         }
-    } else {
-        yyin = stdin;
-        printf("Leyendo desde la entrada estándar. Presione Ctrl+D (Unix/Linux) o Ctrl+Z (Windows) para finalizar.\n");
     }
 
-    int resultado_parse = yyparse();
-
-    if (yyin != stdin && yyin != NULL) {
-        fclose(yyin);
-    }
+    yyparse();
 
     sqlite3_close(db);
-
-    if (resultado_parse == 0) {
-        printf("Análisis completado exitosamente.\n");
-        return 0;
-    } else {
-        printf("Análisis fallido.\n");
-        return 1;
-    }
+    return 0;
 }
 
