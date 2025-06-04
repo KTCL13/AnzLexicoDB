@@ -81,7 +81,7 @@ COMENTARIO            --[^\n]*
 
 
 /* Reglas para Ignorar Comentarios y Espacios en Blanco */
-{COMENTARIO_REGEX}    { /*printf("LEX: COMENTARIO ('%s') en línea %d - Ignorado\n", yytext, current_line);*/ /* Ignorar */ }
+{COMENTARIO}    { /*printf("LEX: COMENTARIO ('%s') en línea %d - Ignorado\n", yytext, current_line);*/ /* Ignorar */ }
 
 [ \t]+              { /* Ignorar espacios en blanco y tabuladores */ }
 
