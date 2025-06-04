@@ -346,6 +346,16 @@ int main(int argc, char *argv[]) {
         "Disponible      INTEGER DEFAULT 0"
         ");";
     
+    char *sql_create_ordenes =
+        "CREATE TABLE IF NOT EXISTS Ordenes ("
+        "ID_Orden    TEXT PRIMARY KEY,"
+        "ID_Usuario  TEXT NOT NULL,"
+        "Fecha       TEXT NOT NULL,"
+        "Total       INTEGER,"
+        "FOREIGN KEY (ID_Usuario) REFERENCES Usuarios(ID_Usuario)"
+        ");";
+
+    
     rc_db = sqlite3_exec(db, sql_create_usuarios, 0, 0, &db_error_message);
     if (rc_db != SQLITE_OK) {
         fprintf(stderr, "Error SQL al crear tabla Usuarios: %s\n", db_error_message);
@@ -363,7 +373,18 @@ int main(int argc, char *argv[]) {
     } else {
         fprintf(stdout, "Tabla Productos verificada/creada.\n");
     }
-  if (argc > 1) {
+
+    rc_db = sqlite3_exec(db, sql_create_ordenes, 0, 0, &db_error_message);
+    if (rc_db != SQLITE_OK) {
+        fprintf(stderr, "Error SQL al crear tabla Ordenes: %s\n", db_error_message);
+        sqlite3_free(db_error_message);
+        db_error_message = 0;
+    } else {
+        fprintf(stdout, "Tabla Ordenes verificada/creada.\n");
+    }
+
+
+    if (argc > 1) {
         yyin = fopen(argv[1], "r");
         if (!yyin) {
             fprintf(stderr, "No se pudo abrir el archivo de entrada: %s\n", argv[1]);
