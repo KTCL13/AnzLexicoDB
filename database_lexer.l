@@ -18,9 +18,9 @@ int current_line = 1;
 %}
 
 /* Opciones de Flex */
-%option noyywrap          /* No llamar a yywrap() al final del archivo */
-%option case-insensitive  /* Palabras clave y booleanos no distinguen mayúsculas/minúsculas */
-/* %option yylineno */    /* Descomentar si se prefiere que Flex maneje el número de línea en 'yylineno' */
+%option noyywrap          
+%option case-insensitive  
+
 
 
 /* Definiciones de Expresiones Regulares (Macros) */
@@ -28,30 +28,29 @@ DIGITO                [0-9]
 LETRA                 [a-zA-Z_]
 IDENTIFICADOR         {LETRA}({LETRA}|{DIGITO})*
 NUMERO                {DIGITO}+
-CADENA                '[^'\n]*' /* Cadenas entre comillas simples, no pueden contener saltos de línea ni comillas simples internas (sin escape) */
+CADENA                '[^'\n]*'  
 COMENTARIO            --[^\n]*
 
 %%
 
-/* Reglas para Palabras Reservadas y Booleanos */
-"insertar"      { /*printf("LEX: KW_INSERTAR ('%s') en línea %d\n", yytext, current_line);*/ return KW_INSERTAR; }
-"en"            { /*printf("LEX: KW_EN ('%s') en línea %d\n", yytext, current_line);*/ return KW_EN; }
-"tabla"         { /*printf("LEX: KW_TABLA ('%s') en línea %d\n", yytext, current_line);*/ return KW_TABLA; }
-"valores"       { /*printf("LEX: KW_VALORES ('%s') en línea %d\n", yytext, current_line);*/ return KW_VALORES; }
-"fin"           { /*printf("LEX: KW_FIN ('%s') en línea %d\n", yytext, current_line);*/ return KW_FIN; }
+
+"insertar"      {  return KW_INSERTAR; }
+"en"            {  return KW_EN; }
+"tabla"         {  return KW_TABLA; }
+"valores"       {  return KW_VALORES; }
+"fin"           {  return KW_FIN; }
 
 "true"          { 
-                  /*printf("LEX: KW_TRUE ('%s') en línea %d\n", yytext, current_line);*/
+                  printf("LEX: KW_TRUE ('%s') en línea %d\n", yytext, current_line);
                   yylval.str_val = strdup(yytext); // Guardar "true" como cadena
                   return KW_TRUE; 
                 }
 "false"         { 
-                  /*printf("LEX: KW_FALSE ('%s') en línea %d\n", yytext, current_line);*/
+                  printf("LEX: KW_FALSE ('%s') en línea %d\n", yytext, current_line);
                   yylval.str_val = strdup(yytext); // Guardar "false" como cadena
                   return KW_FALSE; 
                 }
 
-/* Reglas para Identificadores, Literales Numéricos y de Cadena */
 {IDENTIFICADOR}  {
                         /*printf("LEX: IDENTIFICADOR ('%s') en línea %d\n", yytext, current_line);*/
                         yylval.str_val = strdup(yytext); // Copiar el identificador
@@ -73,14 +72,13 @@ COMENTARIO            --[^\n]*
                         return LITERAL_CADENA;
                       }
 
-/* Reglas para Operadores y Símbolos de Puntuación */
 "="                 { /*printf("LEX: OP_IGUAL ('=') en línea %d\n", current_line);*/ return OP_IGUAL; }
 ":"                 { /*printf("LEX: SYM_DOSPUNTOS (':') en línea %d\n", current_line);*/ return SYM_DOSPUNTOS; }
 ","                 { /*printf("LEX: SYM_COMA (',') en línea %d\n", current_line);*/ return SYM_COMA; }
 ";"                 { /*printf("LEX: SYM_PUNTOYCOMA (';') en línea %d\n", current_line);*/ return SYM_PUNTOYCOMA; }
 
 
-/* Reglas para Ignorar Comentarios y Espacios en Blanco */
+
 {COMENTARIO}    { /*printf("LEX: COMENTARIO ('%s') en línea %d - Ignorado\n", yytext, current_line);*/ /* Ignorar */ }
 
 [ \t]+              { /* Ignorar espacios en blanco y tabuladores */ }
@@ -88,11 +86,9 @@ COMENTARIO            --[^\n]*
 \n                  { current_line++; /* Incrementar contador de línea (si no se usa yylineno) */ }
 
 
-/* Regla para Caracteres Desconocidos (Error Léxico) */
 .                   { 
                       fprintf(stderr, "Error Léxico: Carácter desconocido '%s' en la línea %d.\n", yytext, current_line);
-                      // Podría devolverse un token de error específico si el parser está preparado para manejarlo.
-                      // return LEXICAL_ERROR_TOKEN; 
+        
                     }
 
 %%
