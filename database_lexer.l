@@ -1,11 +1,8 @@
 %{
+#include "types.h" 
 #include <stdio.h>
 #include <stdlib.h> // Para atoi()
 #include <string.h> // Para strdup() y strlen()
-
-// Incluir el archivo de cabecera generado por Bison.
-// Este archivo contiene las definiciones de los tokens (ej. KW_INSERTAR)
-// y la declaración de yylval (si se usa %union en Bison).
 #include "database_parser.tab.h"
 
 // Contador de líneas para reportar errores con precisión.

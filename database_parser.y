@@ -3,7 +3,9 @@
 #include <stdlib.h> // Para malloc, free, atoi, sprintf
 #include <string.h> // Para strdup, strcmp
 #include <strings.h> // Para strcasecmp (en sistemas POSIX)
+#include "types.h"
 #include <sqlite3.h>
+
 
 // Prototipo de la función del analizador léxico (generada por Flex)
 int yylex();
@@ -19,39 +21,8 @@ extern FILE *yyin;       // Desde Flex, para el flujo de entrada
 sqlite3 *db;
 char *db_error_message = 0;
 
-// --- Definición de Estructuras de Datos para las Asignaciones ---
-
-// Enumeración para el tipo de valor
-typedef enum ValType {
-    V_STR,
-    V_INT,
-    V_BOOL
-} ValType;
-
-// Estructura para un valor, incluyendo su tipo y representación original
-typedef struct Value {
-    ValType type;
-    union {
-        char* sVal; // Usado para V_STR
-        int   iVal; // Usado para V_INT (y V_BOOL convertido)
-    } val;
-    char* original_text; // Almacena el texto original del lexema (ej. "true", "123", "'abc'")
-} Value;
-
-// Estructura para una asignación (campo = valor)
-typedef struct Asignacion {
-    char *campo;      // Nombre del campo (identificador)
-    Value valor_data; // El valor asignado con su tipo
-} Asignacion;
-
-// Nodo para la lista enlazada de asignaciones
-typedef struct NodeAsignacion {
-    Asignacion data;
-    struct NodeAsignacion *next;
-} NodeAsignacion;
 
 
-// --- Prototipos de Funciones Auxiliares (implementadas más abajo) ---
 Value crear_valor_desde_cadena(char* sval_from_lexer);
 Value crear_valor_desde_entero(int ival_from_lexer);
 Value crear_valor_desde_booleano_texto(char* bool_text_from_lexer);
@@ -64,7 +35,6 @@ void procesar_sentencia_insercion(char* nombre_tabla, NodeAsignacion* lista_de_a
 
 %}
 
-/* Definición de la unión de tipos para yylval */
 %union {
     char *str_val;                  // Para IDENTIFICADOR, LITERAL_CADENA, KW_TRUE, KW_FALSE
     int int_val;                    // Para LITERAL_NUMERO
@@ -74,7 +44,7 @@ void procesar_sentencia_insercion(char* nombre_tabla, NodeAsignacion* lista_de_a
     NodeAsignacion *lista_asig_ptr; // Para <lista_asignaciones> y <clausula_valores>
 }
 
-/* Declaración de Tokens (Símbolos Terminales) */
+
 %token KW_INSERTAR KW_EN KW_TABLA KW_VALORES KW_FIN
 
 %token <str_val> IDENTIFICADOR
@@ -86,12 +56,12 @@ void procesar_sentencia_insercion(char* nombre_tabla, NodeAsignacion* lista_de_a
 
 %token OP_IGUAL SYM_DOSPUNTOS SYM_COMA SYM_PUNTOYCOMA
 
-/* Tipos para Símbolos No Terminales que devuelven un valor */
+
 %type <valor_struct> valor
 %type <asignacion_struct> asignacion
 %type <lista_asig_ptr> lista_asignaciones clausula_valores
 
-/* Símbolo Inicial de la Gramática */
+
 %start programa
 
 %%
@@ -170,7 +140,6 @@ valor:
 
 %%
 
-/* Sección de Código C Adicional (User Code Section) */
 
 void yyerror(const char *s) {
     fprintf(stderr, "Error Sintáctico: %s en la línea %d, cerca de '%s'.\n", s, current_line, yytext);
@@ -219,13 +188,8 @@ NodeAsignacion* crear_nodo_lista_asignacion(Asignacion asign_data) {
 
 NodeAsignacion* agregar_asignacion_a_lista(NodeAsignacion* lista_existente, Asignacion nueva_asign_data) {
     NodeAsignacion* nuevo_nodo_asignacion = crear_nodo_lista_asignacion(nueva_asign_data);
-    if (!nuevo_nodo_asignacion) { // Chequea si la creación del nodo falló
-        // No es necesario llamar a yyerror aquí, ya que la regla que llama lo hará.
-        // Si lista_existente es NULL, y nuevo_nodo_asignacion es NULL, devolver NULL.
-        // Si lista_existente no es NULL, pero nuevo_nodo_asignacion es NULL,
-        // la lista original se devuelve sin cambios, pero la regla debería abortar.
-        // Para simplificar, asumimos que si nuevo_nodo_asignacion es NULL, la regla abortará.
-        return lista_existente; // O NULL si lista_existente también era NULL
+    if (!nuevo_nodo_asignacion) { 
+        return lista_existente; 
     }
 
     if (!lista_existente) {
@@ -241,7 +205,7 @@ NodeAsignacion* agregar_asignacion_a_lista(NodeAsignacion* lista_existente, Asig
 
 void liberar_valor_data(Value val_data) {
     if (val_data.original_text) {
-        free(val_data.original_text); // original_text siempre es un strdup o tomado del lexer
+        free(val_data.original_text); 
     }
 }
 
@@ -278,7 +242,7 @@ void procesar_sentencia_insercion(char* nombre_tabla, NodeAsignacion* lista_de_a
     if (num_asignaciones == 0) {
          fprintf(stderr, "Error: Lista de asignaciones vacía para tabla '%s'.\n", nombre_tabla);
         if (nombre_tabla) free(nombre_tabla);
-        liberar_lista_asignaciones(lista_de_asignaciones); // Liberar aunque esté vacía (si el nodo cabeza existe)
+        liberar_lista_asignaciones(lista_de_asignaciones); 
         return;
     }
 
@@ -385,8 +349,8 @@ int main(int argc, char *argv[]) {
     rc_db = sqlite3_exec(db, sql_create_usuarios, 0, 0, &db_error_message);
     if (rc_db != SQLITE_OK) {
         fprintf(stderr, "Error SQL al crear tabla Usuarios: %s\n", db_error_message);
-        sqlite3_free(db_error_message); // db_error_message es asignado por sqlite3_exec
-        db_error_message = 0; // Resetear para el próximo uso
+        sqlite3_free(db_error_message); 
+        db_error_message = 0; 
     } else {
         fprintf(stdout, "Tabla Usuarios verificada/creada.\n");
     }

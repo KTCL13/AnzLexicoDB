@@ -1,0 +1,27 @@
+-- Insertar un usuario
+INSERTAR EN TABLA Usuarios
+VALORES:
+  ID_Usuario = 'jperez',
+  Nombre = 'Juana Perez',
+  Email = 'juana@example.com',
+  Activo = true
+FIN;
+
+-- Insertar otro usuario
+insertar en tabla usuarios  -- Ejemplo con minúsculas
+valores:
+  id_usuario = 'carlosg',
+  nombre = 'Carlos Gomez',
+  email = 'c.gomez@mail.com',
+  activo = false
+fin;
+
+-- Insertar un producto
+INSERTAR EN TABLA Productos
+VALORES:
+  SKU = 'LAP001',
+  NombreProducto = 'Laptop Modelo X',
+  Stock = 15,
+  Precio = 950,
+  Disponible = true
+FIN;

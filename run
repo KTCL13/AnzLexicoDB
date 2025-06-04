@@ -1,0 +1,3 @@
+bison -d database_parser.y
+flex database_lexer.l
+gcc -o database lex.yy.c database_parser.tab.c -lfl -lsqlite3
